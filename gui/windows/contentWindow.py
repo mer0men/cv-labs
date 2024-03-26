@@ -12,6 +12,8 @@ from PIL import ImageGrab
 from scipy.stats import skew, kurtosis
 
 from gui.config import config
+from gui.windows.analyzeWindow import AnalyzeWindow
+from gui.windows.captureWindow import PanningWindow, RecordingControlWindow
 
 from ..state import state
 
@@ -72,6 +74,9 @@ class ContentWindow(QWidget):
         self.screen_w = config.screen_w
         self.screen_h = config.screen_h
 
+
+        self.analyze_window = AnalyzeWindow()
+
         self.analyze_btn = QPushButton("Анализ", self)
 
         self.menu_bar = menu = QMenu()
@@ -96,6 +101,8 @@ class ContentWindow(QWidget):
         self.play_pause_btn = QPushButton("pause")
         self.filter_btn = QPushButton("filter rgb")
         self.scr_shot_btn = QPushButton("scr_shot")
+        self.capture_btn = QPushButton("capture")
+
         self.reset_btn = QPushButton("reset")
 
         self.main_layout = QGridLayout()
@@ -106,6 +113,9 @@ class ContentWindow(QWidget):
         
 
     def initUI(self):
+        self.histograms.connect(self.analyze_window.display_params)
+
+
         self.number_input.focusOutEvent = self.focus_out_event
         self.number_input.mouseDoubleClickEvent = self.inputMouseDoubleClickEvent 
         self.number_input.textChanged.connect(self.on_text_changed)
@@ -120,6 +130,10 @@ class ContentWindow(QWidget):
         self.reset_btn.clicked.connect(self.reset_content)
         self.scr_shot_btn.clicked.connect(self.take_screenshot)
 
+        self.statistics_action.triggered.connect(self.open_analyze_window)
+
+        self.capture_btn.clicked.connect(self.open_capture)
+
         self.main_layout.addWidget(self.label, 0, 0, 3, 2)
         self.main_layout.addWidget(self.image_btn, 3, 0, 1, 1)
         self.main_layout.addWidget(self.image_save_btn, 3, 1, 1, 1)
@@ -133,6 +147,7 @@ class ContentWindow(QWidget):
         self.main_layout.addWidget(self.reset_btn, 6, 0, 1, 2)
         self.main_layout.addWidget(self.scr_shot_btn, 7, 0, 1, 2)
         self.main_layout.addWidget(self.number_input, 8, 0, 1, 2)
+        self.main_layout.addWidget(self.capture_btn, 9, 0, 1, 1)
 
 
 
@@ -281,6 +296,10 @@ class ContentWindow(QWidget):
                     h, w, ch = frame.shape
                     bytes_per_line = ch * w
                     qt_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+
+                # Отображаем кадр в QLabel
+                if self.analyze_window.isVisible():
+                    self.calculate_statistics()
                 
                 pixmap = QPixmap.fromImage(qt_image)
                 self.label.setPixmap(pixmap)
@@ -434,6 +453,32 @@ class ContentWindow(QWidget):
         ]
         return vals 
 
+    def calculate_statistics(self):
+        if self.current_image is None:
+            return
+        hist, freq = self.calculate_histograms(self.current_image)
+        means = self.calculate_means(self.current_image)
+        varsiance = self.calculate_dispersion(self.current_image)
+        std = self.calculate_std(self.current_image)
+        skew = self.calculate_skew(self.current_image)
+        kurtosis = self.calculate_kurtosis(self.current_image)
+        variance = self.calculate_variance(self.current_image)
+        mins = self.calculate_min(self.current_image)
+        maxs = self.calculate_max(self.current_image)
+        percentil5 = self.calculate_percentile5(self.current_image)
+        percentil95 = self.calculate_percentile95(self.current_image)
+        median = self.calculate_median(self.current_image)
+
+        self.histograms.emit(hist, means, varsiance, std, skew, kurtosis,
+                             variance, mins, maxs, percentil5, percentil95,
+                             median, "generated_img/hist.png", freq)
+
+        print("analyze") 
+
+    def open_analyze_window(self):
+        self.calculate_statistics()
+        self.analyze_window.show()
+
     def inputMouseDoubleClickEvent(self, event):
         self.number_input.setReadOnly(False) 
             
@@ -455,3 +500,11 @@ class ContentWindow(QWidget):
         self.cv_video_capture = cv2.VideoCapture()
         self.label.setPixmap(QPixmap())
         self.cv_original_image = None
+
+    def open_capture(self):
+        control_window = RecordingControlWindow(None)
+        panning_window = PanningWindow(control_window)
+        control_window.panning_window = panning_window
+
+        control_window.show()
+        panning_window.show()
